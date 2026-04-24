@@ -137,7 +137,7 @@ class PADSDataset(Dataset):
         overlap: bool = False,
     ):
         self.window_size = window_size
-        self.stats = stats
+        self.stats = None
         self.overlap = overlap
 
         movement_dir = os.path.join(data_dir, "movement")
@@ -196,6 +196,8 @@ class PADSDataset(Dataset):
         self._stacked: torch.Tensor = (
             torch.stack(windows) if windows else torch.zeros(0, 6, window_size)
         )
+        if stats is not None:
+            self.apply_stats(stats)
 
     # ------------------------------------------------------------------
     def _extract_windows(self, signal: np.ndarray) -> List[np.ndarray]:
@@ -218,16 +220,19 @@ class PADSDataset(Dataset):
         return out
 
     # ------------------------------------------------------------------
+    def apply_stats(self, stats: Dict[str, torch.Tensor]):
+        self.stats = stats
+        mean = stats["mean"]
+        std = stats["std"]
+        for i in range(len(self.windows)):
+            self.windows[i] = (self.windows[i] - mean[:, None]) / std[:, None]
+
     def __len__(self) -> int:
         return len(self.windows)
 
     def __getitem__(self, idx: int) -> torch.Tensor:
-        x = self.windows[idx].clone()  # (C, W)
-        if self.stats is not None:
-            mean = self.stats["mean"]  # (C,)
-            std = self.stats["std"]    # (C,)
-            x = (x - mean[:, None]) / std[:, None]
-        return x
+        # Pre-normalized in apply_stats, zero CPU math required per iteration!
+        return self.windows[idx]
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -278,8 +283,8 @@ def build_pads_dataloaders(
     std = stack.std(dim=(0, 2)) + 1e-8   # (C,)
     stats: Dict[str, torch.Tensor] = {"mean": mean, "std": std}
 
-    # Apply stats to training set in-place (avoids a second CSV read pass)
-    train_ds.stats = stats
+    # Apply stats to training set in-place (avoids runtime overhead)
+    train_ds.apply_stats(stats)
 
     print("  Loading val/test windows ...")
     val_ds = PADSDataset(data_dir, val_ids, window_size, wrist, stats=stats)
