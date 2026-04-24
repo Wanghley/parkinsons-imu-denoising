@@ -37,9 +37,13 @@ CHECKPOINT_DIR = "checkpoints"
 
 # ── Performance ──────────────────────────────────────────────────
 # Use (cpu_count - 1) workers so the main process has a dedicated core.
-# Cap at 6 to avoid over-subscribing on 8-core Apple Silicon.
-NUM_WORKERS    = min(6, max(0, (os.cpu_count() or 1) - 1))
+# Cap at 4 — empirically safe on both 8-core Apple Silicon and DCC/SLURM
+# nodes where PyTorch warns above 4 workers; raise if running on a
+# fat node with many cores and no SLURM CPU limit.
+NUM_WORKERS    = min(4, max(0, (os.cpu_count() or 1) - 1))
 PIN_MEMORY     = torch.cuda.is_available()   # only beneficial on CUDA
 PREFETCH_FACTOR = 2                          # batches to prefetch per worker
-# Enable torch.compile for MPS/CUDA (first epoch slower, rest faster)
+# torch.compile: enabled by default; train.py does a probe-forward after
+# compile() to catch environments where Triton/inductor kernel build fails
+# (e.g., missing Python.h on some HPC clusters) and falls back gracefully.
 USE_COMPILE    = True

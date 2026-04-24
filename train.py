@@ -130,7 +130,18 @@ def train(
 
     # torch.compile — fuses ops and generates optimised GPU kernels.
     # Skip for the WaveletDenoiser (no trainable params, pure NumPy forward).
-    # Wrap in try/except: compile is experimental on MPS in torch 2.x.
+    #
+    # IMPORTANT: torch.compile() is lazy — it returns immediately and only
+    # triggers Triton/inductor JIT compilation on the FIRST forward call.
+    # On some HPC clusters the inductor build step fails because Python
+    # development headers (Python.h) are not on GCC's include path, which
+    # surfaces as an InductorError/CalledProcessError mid-training rather than
+    # at the torch.compile() call site.
+    #
+    # Fix: after torch.compile() succeeds syntactically, do a single probe
+    # forward pass with a tiny dummy batch while still inside the try/except.
+    # If the kernel build fails, we catch it here and fall back to the
+    # uncompiled model — training continues normally without torch.compile.
     trainable = [p for p in model.parameters() if p.requires_grad]
     try:
         import config as _cfg
@@ -138,13 +149,27 @@ def train(
     except ImportError:
         _use_compile = False
     if _use_compile and trainable and device == "cuda" and hasattr(torch, "compile"):
+        _orig_model = model   # keep reference in case probe fails
         try:
-            model = torch.compile(model, mode="reduce-overhead")
+            _compiled = torch.compile(model, mode="reduce-overhead")
+            # Probe: grab one batch from the loader (creates a fresh iterator,
+            # does NOT affect training iteration state) and run a no-grad
+            # forward to force Triton kernel compilation now.
+            _probe = next(iter(train_loader))
+            if isinstance(_probe, (list, tuple)):
+                _probe = _probe[0]
+            _probe = _probe[:2].to(device)   # tiny slice — just 2 samples
+            with torch.no_grad():
+                _compiled(_probe)
+            del _probe
+            model = _compiled
             if verbose:
                 print("  torch.compile enabled (reduce-overhead)")
         except Exception as _e:
+            model = _orig_model   # revert to uncompiled model
             if verbose:
-                print(f"  torch.compile skipped: {_e}")
+                print(f"  torch.compile skipped ({type(_e).__name__}): "
+                      f"{str(_e)[:120]}")
 
     optimizer = Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=10)
