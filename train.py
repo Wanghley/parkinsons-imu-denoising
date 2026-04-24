@@ -4,6 +4,9 @@ Student 1 primary contribution; provided here for integration.
 """
 
 import os
+import time
+from tqdm import tqdm
+
 import torch
 import torch.nn as nn
 from torch.optim import Adam
@@ -35,8 +38,9 @@ def train_one_epoch(
             with torch.amp.autocast(device_type="cuda"):
                 recon = model(noisy)
                 mse_loss = nn.functional.mse_loss(recon, clean)
-                clean_fft = torch.fft.rfft(clean, dim=-1, norm="ortho")
-                recon_fft = torch.fft.rfft(recon, dim=-1, norm="ortho")
+                # Upcast to float32 before FFT to avoid experimental ComplexHalf (fp16) issues
+                clean_fft = torch.fft.rfft(clean.float(), dim=-1, norm="ortho")
+                recon_fft = torch.fft.rfft(recon.float(), dim=-1, norm="ortho")
                 freq_loss = nn.functional.l1_loss(torch.abs(recon_fft), torch.abs(clean_fft))
                 loss = mse_loss + alpha * freq_loss
             
@@ -119,7 +123,10 @@ def train(
     # Initialize AMP Scaler if on CUDA GPU (e.g. RTX 2080 Ti)
     scaler = torch.amp.GradScaler("cuda") if device == "cuda" else None
 
-    for epoch in range(1, epochs + 1):
+    start_time = time.time()
+    epochs_iter = tqdm(range(1, epochs + 1), desc="Training") if verbose else range(1, epochs + 1)
+
+    for epoch in epochs_iter:
         train_loss = train_one_epoch(model, train_loader, optimizer, noise_fn, device, alpha=alpha, scaler=scaler)
         val_loss, val_mse = validate(model, val_loader, noise_fn, device, alpha=alpha)
         scheduler.step(val_loss)
@@ -134,11 +141,12 @@ def train(
                 os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
                 torch.save(model.state_dict(), checkpoint_path)
 
-        if verbose and (epoch % 10 == 0 or epoch == 1):
+        if verbose:
             lr_now = optimizer.param_groups[0]["lr"]
-            print(
-                f"Epoch {epoch:3d}/{epochs} | "
-                f"train={train_loss:.6f} | val={val_loss:.6f} | val_mse={val_mse:.6f} | lr={lr_now:.2e}"
-            )
+            epochs_iter.set_postfix({"train": f"{train_loss:.3f}", "val": f"{val_loss:.3f}", "mse": f"{val_mse:.3f}", "lr": f"{lr_now:.1e}"})
+
+    total_time = time.time() - start_time
+    if verbose:
+        print(f"  Took: {total_time:.1f}s ({total_time/epochs:.3f}s / epoch)")
 
     return history
