@@ -24,6 +24,7 @@ from visualize import (
     plot_latent_dim_results,
     plot_noise_robustness,
     plot_noise_type_matrix,
+    plot_hyperparameter_search,
     plot_signals,
 )
 import config
@@ -74,7 +75,7 @@ def run_architecture_comparison(
     os.makedirs(results_dir, exist_ok=True)
     summary = {}
 
-    for arch in ["fc", "cnn", "lstm", "unet"]:
+    for arch in ["fc", "cnn", "lstm", "unet", "transformer"]:
         print(f"\n{'='*50}")
         print(f"  Architecture: {arch.upper()}")
         print(f"{'='*50}")
@@ -137,7 +138,7 @@ def run_latent_dim_experiment(
     if latent_dims is None:
         latent_dims = config.LATENT_DIM_SWEEP
     if archs is None:
-        archs = ["fc", "cnn", "lstm", "unet"]
+        archs = ["fc", "cnn", "lstm", "unet", "transformer"]
 
     device = _get_device()
     os.makedirs(results_dir, exist_ok=True)
@@ -201,7 +202,7 @@ def run_noise_robustness_experiment(
     if test_sigmas is None:
         test_sigmas = config.NOISE_SIGMA_SWEEP
     if archs is None:
-        archs = ["fc", "cnn", "lstm", "unet"]
+        archs = ["fc", "cnn", "lstm", "unet", "transformer"]
 
     device = _get_device()
     os.makedirs(results_dir, exist_ok=True)
@@ -268,7 +269,7 @@ def run_noise_type_experiment(
     "Train or test the models under multiple noise models and compare performance."
     """
     if archs is None:
-        archs = ["fc", "cnn", "lstm", "unet"]
+        archs = ["fc", "cnn", "lstm", "unet", "transformer"]
 
     noise_types = ["gaussian", "masking", "impulse", "sinusoidal"]
     noise_kwargs = {
@@ -399,6 +400,11 @@ def run_hyperparameter_search(
     print(f"\nBest config: lr={best_config['lr']:.0e}, batch={best_config['batch']}")
     summary = {"best": best_config, "table": table}
     _save_json(summary, os.path.join(results_dir, "hyperparam_search.json"))
+
+    plot_hyperparameter_search(
+        table, lr_list, batch_list,
+        save_path=os.path.join(results_dir, "hyperparam_search.png"),
+    )
     return summary
 
 

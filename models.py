@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 
@@ -285,6 +286,96 @@ class UNet1D(nn.Module):
 
 
 # ──────────────────────────────────────────────
+# Optional: Patch-based Transformer Autoencoder
+# ──────────────────────────────────────────────
+class TransformerAutoencoder(nn.Module):
+    """
+    Patch-based 1D Transformer autoencoder (ViT-style tokenisation).
+
+    The signal (B, C, L) is divided into non-overlapping patches of
+    ``patch_size`` samples.  Each patch is linearly projected to a
+    d_model-dimensional token.  With the default patch_size=8 and L=1024
+    we get 128 tokens, keeping attention cost at O(128²) rather than O(1024²).
+
+    Encoder : patch-embed → pos-embed → TransformerEncoder → mean-pool → FC → z
+    Decoder : FC → tile to (B, P, d_model) → pos-embed → TransformerEncoder → patch-reconstruct
+    """
+
+    def __init__(
+        self,
+        signal_length: int = 1024,
+        latent_dim: int = 64,
+        num_channels: int = 1,
+        d_model: int = 128,
+        nhead: int = 4,
+        num_layers: int = 2,
+        dim_feedforward: int = 256,
+        patch_size: int = 8,
+    ):
+        super().__init__()
+        assert signal_length % patch_size == 0, \
+            f"signal_length {signal_length} must be divisible by patch_size {patch_size}"
+
+        self.signal_length = signal_length
+        self.latent_dim    = latent_dim
+        self.num_channels  = num_channels
+        self.d_model       = d_model
+        self.patch_size    = patch_size
+        self.num_patches   = signal_length // patch_size  # 128 for L=1024, ps=8
+
+        patch_dim = num_channels * patch_size  # e.g. 6 × 8 = 48
+
+        # ---- Encoder ----
+        self.patch_embed = nn.Linear(patch_dim, d_model)
+        self.pos_embed   = nn.Parameter(torch.randn(1, self.num_patches, d_model) * 0.02)
+
+        enc_layer = nn.TransformerEncoderLayer(
+            d_model, nhead, dim_feedforward,
+            dropout=0.1, batch_first=True, norm_first=True,
+        )
+        self.transformer_enc = nn.TransformerEncoder(enc_layer, num_layers,
+                                                     enable_nested_tensor=False)
+        self.encoder_fc = nn.Linear(d_model, latent_dim)
+
+        # ---- Decoder ----
+        self.decoder_fc = nn.Linear(latent_dim, d_model)
+
+        dec_layer = nn.TransformerEncoderLayer(
+            d_model, nhead, dim_feedforward,
+            dropout=0.1, batch_first=True, norm_first=True,
+        )
+        self.transformer_dec = nn.TransformerEncoder(dec_layer, num_layers,
+                                                     enable_nested_tensor=False)
+        self.patch_reconstruct = nn.Linear(d_model, patch_dim)
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        B, C, L = x.shape
+        # (B, C, num_patches, patch_size) → (B, num_patches, C*patch_size)
+        x = x.reshape(B, C, self.num_patches, self.patch_size)
+        x = x.permute(0, 2, 1, 3).reshape(B, self.num_patches, C * self.patch_size)
+
+        tokens  = self.patch_embed(x) + self.pos_embed      # (B, P, d_model)
+        enc_out = self.transformer_enc(tokens)               # (B, P, d_model)
+        pooled  = enc_out.mean(dim=1)                        # (B, d_model)
+        return self.encoder_fc(pooled)                       # (B, latent_dim)
+
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        B = z.size(0)
+        # Tile latent to patch sequence, add positional info
+        h = self.decoder_fc(z).unsqueeze(1).expand(-1, self.num_patches, -1)  # (B, P, d_model)
+        h = h + self.pos_embed
+        dec_out = self.transformer_dec(h)                    # (B, P, d_model)
+        patches = self.patch_reconstruct(dec_out)            # (B, P, C*patch_size)
+
+        # (B, P, C, patch_size) → (B, C, L)
+        out = patches.reshape(B, self.num_patches, self.num_channels, self.patch_size)
+        return out.permute(0, 2, 1, 3).reshape(B, self.num_channels, self.signal_length)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.decode(self.encode(x))
+
+
+# ──────────────────────────────────────────────
 # Factory helper
 # ──────────────────────────────────────────────
 def build_model(
@@ -293,7 +384,7 @@ def build_model(
     latent_dim: int = 64,
     num_channels: int = 1,
 ) -> nn.Module:
-    """Return a model by name: 'fc', 'cnn', 'lstm', or 'unet'."""
+    """Return a model by name: 'fc', 'cnn', 'lstm', 'unet', or 'transformer'."""
     name = name.lower()
     if name == "fc":
         return FCAutoencoder(signal_length, latent_dim, num_channels)
@@ -303,5 +394,7 @@ def build_model(
         return LSTMAutoencoder(signal_length, latent_dim, num_channels)
     elif name == "unet":
         return UNet1D(signal_length, latent_dim, num_channels)
+    elif name == "transformer":
+        return TransformerAutoencoder(signal_length, latent_dim, num_channels)
     else:
-        raise ValueError(f"Unknown model '{name}'. Choose from 'fc', 'cnn', 'lstm', 'unet'.")
+        raise ValueError(f"Unknown model '{name}'. Choose from 'fc', 'cnn', 'lstm', 'unet', 'transformer'.")

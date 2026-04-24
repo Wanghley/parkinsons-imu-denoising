@@ -183,6 +183,45 @@ def plot_noise_type_matrix(
     _save_or_show(fig, save_path)
 
 
+def plot_hyperparameter_search(
+    table: List[Dict],
+    lr_list: List[float],
+    batch_list: List[int],
+    save_path: Optional[str] = None,
+):
+    """
+    Heatmap of best validation loss for every (learning_rate × batch_size) combination.
+    Rows = learning rate, columns = batch size, color = best val loss (lower = better).
+    """
+    matrix = np.zeros((len(lr_list), len(batch_list)))
+    for row in table:
+        i = lr_list.index(row["lr"])
+        j = batch_list.index(row["batch"])
+        matrix[i, j] = row["best_val"]
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    im = ax.imshow(matrix, cmap="YlOrRd_r", aspect="auto")
+    plt.colorbar(im, ax=ax, label="Best Val Loss (↓)")
+
+    ax.set_xticks(range(len(batch_list)))
+    ax.set_xticklabels([str(b) for b in batch_list], fontsize=9)
+    ax.set_yticks(range(len(lr_list)))
+    ax.set_yticklabels([f"{lr:.0e}" for lr in lr_list], fontsize=9)
+    ax.set_xlabel("Batch Size")
+    ax.set_ylabel("Learning Rate")
+    ax.set_title("Hyperparameter Search: Best Validation Loss", fontweight="bold")
+
+    vmin, vmax = matrix.min(), matrix.max()
+    for i in range(len(lr_list)):
+        for j in range(len(batch_list)):
+            color = "white" if matrix[i, j] < (vmin + vmax) / 2 else "black"
+            ax.text(j, i, f"{matrix[i, j]:.4f}", ha="center", va="center",
+                    fontsize=8, color=color)
+
+    plt.tight_layout()
+    _save_or_show(fig, save_path)
+
+
 def _save_or_show(fig, save_path: Optional[str]):
     if save_path:
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)

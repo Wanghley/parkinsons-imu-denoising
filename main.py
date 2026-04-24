@@ -6,12 +6,18 @@ Usage:
     python main.py --exp arch          # architecture comparison only
     python main.py --exp latent        # latent dimension sweep
     python main.py --exp noise         # noise robustness
+    python main.py --exp noise_types   # noise-type cross-evaluation
     python main.py --exp hyperparam    # hyperparameter search
+
+Each run is saved to results/<YYYYMMDD_HHMMSS>/ so runs never overwrite each other.
+Pass --tag my_label to append a human-readable suffix: results/<timestamp>_my_label/.
 """
 
 import argparse
+import json
 import os
 import warnings
+from datetime import datetime
 
 import torch
 
@@ -40,7 +46,10 @@ def parse_args():
     parser.add_argument("--epochs",  type=int,   default=config.EPOCHS)
     parser.add_argument("--lr",      type=float, default=config.LEARNING_RATE)
     parser.add_argument("--batch",   type=int,   default=config.BATCH_SIZE)
-    parser.add_argument("--results", type=str,   default=config.RESULTS_DIR)
+    parser.add_argument("--results", type=str,   default=config.RESULTS_DIR,
+                        help="Base directory; each run creates a timestamped subdirectory")
+    parser.add_argument("--tag",     type=str,   default="",
+                        help="Optional label appended to the run directory name")
     return parser.parse_args()
 
 
@@ -90,10 +99,41 @@ def _wrap_1d_loader(loader, batch_size, shuffle):
     )
 
 
+def _make_run_dir(base: str, tag: str) -> str:
+    """Create and return results/<timestamp>[_tag]/ for this run."""
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name  = f"{stamp}_{tag}" if tag else stamp
+    run_dir = os.path.join(base, name)
+    os.makedirs(run_dir, exist_ok=True)
+    return run_dir
+
+
+def _save_run_config(run_dir: str, args) -> None:
+    """Snapshot CLI args + key config values into run_config.json."""
+    cfg = {
+        "exp":           args.exp,
+        "epochs":        args.epochs,
+        "lr":            args.lr,
+        "batch":         args.batch,
+        "tag":           args.tag,
+        "dataset":       config.DATASET,
+        "data_dir":      config.DATA_DIR,
+        "wrist":         config.WRIST,
+        "window_size":   config.WINDOW_SIZE,
+        "num_channels":  config.NUM_CHANNELS,
+        "latent_dim":    config.LATENT_DIM,
+        "gaussian_sigma": config.GAUSSIAN_SIGMA,
+        "device":        config.DEVICE,
+    }
+    with open(os.path.join(run_dir, "run_config.json"), "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
 def main():
     args = parse_args()
-    os.makedirs(args.results, exist_ok=True)
-    
+    run_dir = _make_run_dir(args.results, args.tag)
+    _save_run_config(run_dir, args)
+
     print("\n" + "=" * 60)
     print(f"SYSTEM INFO: Using device '{config.DEVICE}'")
     if config.DEVICE == "mps":
@@ -117,7 +157,7 @@ def main():
             val_loader.dataset,
             noise_fn,
             arch="cnn",
-            results_dir=args.results,
+            results_dir=run_dir,
             epochs=min(args.epochs, 50),
         )
 
@@ -127,7 +167,7 @@ def main():
         print("=" * 60)
         run_architecture_comparison(
             train_loader, val_loader, test_loader, noise_fn,
-            results_dir=args.results,
+            results_dir=run_dir,
             epochs=args.epochs,
             lr=args.lr,
         )
@@ -138,7 +178,7 @@ def main():
         print("=" * 60)
         run_latent_dim_experiment(
             train_loader, val_loader, test_loader, noise_fn,
-            results_dir=args.results,
+            results_dir=run_dir,
             epochs=args.epochs,
             lr=args.lr,
         )
@@ -150,7 +190,7 @@ def main():
         run_noise_robustness_experiment(
             train_loader, val_loader, test_loader,
             train_sigma=config.GAUSSIAN_SIGMA,
-            results_dir=args.results,
+            results_dir=run_dir,
             epochs=args.epochs,
             lr=args.lr,
         )
@@ -161,12 +201,12 @@ def main():
         print("=" * 60)
         run_noise_type_experiment(
             train_loader, val_loader, test_loader,
-            results_dir=args.results,
+            results_dir=run_dir,
             epochs=args.epochs,
             lr=args.lr,
         )
 
-    print("\nAll experiments complete. Results saved to:", args.results)
+    print("\nAll experiments complete. Results saved to:", run_dir)
 
 
 if __name__ == "__main__":
