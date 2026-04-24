@@ -17,6 +17,7 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     noise_fn: Callable,
     device: str,
+    alpha: float = 0.1,
 ) -> float:
     model.train()
     total_loss = 0.0
@@ -24,7 +25,15 @@ def train_one_epoch(
         clean = batch.to(device)
         noisy = noise_fn(clean)
         recon = model(noisy)
-        loss  = nn.functional.mse_loss(recon, clean)
+        
+        # Hybrid Loss: MSE + alpha * Frequency Domain Loss
+        mse_loss  = nn.functional.mse_loss(recon, clean)
+        
+        clean_fft = torch.fft.rfft(clean, dim=-1, norm="ortho")
+        recon_fft = torch.fft.rfft(recon, dim=-1, norm="ortho")
+        freq_loss = nn.functional.l1_loss(torch.abs(recon_fft), torch.abs(clean_fft))
+        
+        loss = mse_loss + alpha * freq_loss
 
         optimizer.zero_grad()
         loss.backward()
@@ -41,15 +50,30 @@ def validate(
     loader: torch.utils.data.DataLoader,
     noise_fn: Callable,
     device: str,
-) -> float:
+    alpha: float = 0.1,
+) -> tuple:
+    """Returns (hybrid_loss, pure_mse) so callers can track both metrics."""
+    if len(loader.dataset) == 0:
+        return float("inf"), float("inf")
     model.eval()
-    total_loss = 0.0
+    total_hybrid = 0.0
+    total_mse = 0.0
     for batch in loader:
         clean = batch.to(device)
         noisy = noise_fn(clean)
         recon = model(noisy)
-        total_loss += nn.functional.mse_loss(recon, clean).item() * len(clean)
-    return total_loss / len(loader.dataset)
+
+        mse_loss = nn.functional.mse_loss(recon, clean)
+        clean_fft = torch.fft.rfft(clean, dim=-1, norm="ortho")
+        recon_fft = torch.fft.rfft(recon, dim=-1, norm="ortho")
+        freq_loss = nn.functional.l1_loss(torch.abs(recon_fft), torch.abs(clean_fft))
+
+        hybrid = mse_loss + alpha * freq_loss
+        total_hybrid += hybrid.item() * len(clean)
+        total_mse    += mse_loss.item() * len(clean)
+
+    n = len(loader.dataset)
+    return total_hybrid / n, total_mse / n
 
 
 def train(
@@ -62,6 +86,7 @@ def train(
     device: str = "cpu",
     checkpoint_path: str = None,
     verbose: bool = True,
+    alpha: float = 0.1,
 ) -> Dict[str, List[float]]:
     """
     Full training loop with LR scheduling and optional checkpointing.
@@ -71,16 +96,17 @@ def train(
     optimizer = Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=10)
 
-    history = {"train_loss": [], "val_loss": []}
+    history = {"train_loss": [], "val_loss": [], "val_mse": []}
     best_val = float("inf")
 
     for epoch in range(1, epochs + 1):
-        train_loss = train_one_epoch(model, train_loader, optimizer, noise_fn, device)
-        val_loss   = validate(model, val_loader, noise_fn, device)
+        train_loss = train_one_epoch(model, train_loader, optimizer, noise_fn, device, alpha=alpha)
+        val_loss, val_mse = validate(model, val_loader, noise_fn, device, alpha=alpha)
         scheduler.step(val_loss)
 
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)
+        history["val_mse"].append(val_mse)
 
         if val_loss < best_val:
             best_val = val_loss
@@ -92,7 +118,7 @@ def train(
             lr_now = optimizer.param_groups[0]["lr"]
             print(
                 f"Epoch {epoch:3d}/{epochs} | "
-                f"train={train_loss:.6f} | val={val_loss:.6f} | lr={lr_now:.2e}"
+                f"train={train_loss:.6f} | val={val_loss:.6f} | val_mse={val_mse:.6f} | lr={lr_now:.2e}"
             )
 
     return history
