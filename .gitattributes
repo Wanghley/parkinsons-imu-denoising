@@ -1,0 +1,8 @@
+# Exclude LaTeX files from GitHub language statistics
+*.tex linguist-documentation
+*.sty linguist-documentation
+*.bib linguist-documentation
+*.bst linguist-documentation
+
+# Exclude report directory
+report/** linguist-documentation
