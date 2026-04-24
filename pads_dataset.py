@@ -228,6 +228,8 @@ class PADSDataset(Dataset):
         std = stats["std"]
         for i in range(len(self.windows)):
             self.windows[i] = (self.windows[i] - mean[:, None]) / std[:, None]
+        # Keep _stacked in sync with the (now normalized) windows.
+        self._stacked = torch.stack(self.windows) if self.windows else self._stacked
 
     def __len__(self) -> int:
         return len(self.windows)
@@ -285,6 +287,13 @@ def build_pads_dataloaders(
     std = stack.std(dim=(0, 2)) + 1e-8   # (C,)
     stats: Dict[str, torch.Tensor] = {"mean": mean, "std": std}
 
+    # Normalization sanity-check — expect mean ≈ 0, std ≈ 1 per channel after applying stats.
+    print("  Channel-wise normalization stats (fit on training windows):")
+    ch_names = ["Accel_X", "Accel_Y", "Accel_Z", "Gyro_X", "Gyro_Y", "Gyro_Z"]
+    for c, (m_val, s_val) in enumerate(zip(mean.tolist(), std.tolist())):
+        label = ch_names[c] if c < len(ch_names) else f"ch{c}"
+        print(f"    {label:8s}: mean={m_val:+.4f}, std={s_val:.4f}")
+
     # Apply stats to training set in-place (avoids runtime overhead)
     train_ds.apply_stats(stats)
 
@@ -297,9 +306,20 @@ def build_pads_dataloaders(
         f"val: {len(val_ds)}, test: {len(test_ds)}"
     )
 
-    # pin_memory is only beneficial (and supported) on CUDA
-    pin = torch.cuda.is_available()
-    loader_kwargs = dict(pin_memory=pin, num_workers=0)
+    try:
+        from config import NUM_WORKERS, PIN_MEMORY, PREFETCH_FACTOR
+    except ImportError:
+        NUM_WORKERS, PIN_MEMORY, PREFETCH_FACTOR = 0, False, 2
+
+    use_workers = NUM_WORKERS > 0
+    loader_kwargs = dict(
+        pin_memory=PIN_MEMORY,
+        num_workers=NUM_WORKERS,
+        persistent_workers=use_workers,   # keep workers alive between epochs
+        prefetch_factor=PREFETCH_FACTOR if use_workers else None,
+    )
+    print(f"  DataLoader: num_workers={NUM_WORKERS}, pin_memory={PIN_MEMORY}, "
+          f"prefetch_factor={PREFETCH_FACTOR if use_workers else 'N/A'}")
     return (
         DataLoader(train_ds, batch_size=batch_size, shuffle=True, **loader_kwargs),
         DataLoader(val_ds, batch_size=batch_size, shuffle=False, **loader_kwargs),
