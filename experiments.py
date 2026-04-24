@@ -59,6 +59,24 @@ def _save_reconstruction_example(
 
 
 # ─────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────
+def _is_trainable(model: torch.nn.Module) -> bool:
+    """Return True if the model has at least one parameter that requires grad."""
+    return any(p.requires_grad for p in model.parameters())
+
+
+def _free_gpu():
+    """Release cached GPU memory between model runs."""
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+
+
+# ─────────────────────────────────────────────────────────────────
 # Experiment 1: Architecture Comparison
 # ─────────────────────────────────────────────────────────────────
 def run_architecture_comparison(
@@ -70,29 +88,39 @@ def run_architecture_comparison(
     epochs: int = config.EPOCHS,
     lr: float = config.LEARNING_RATE,
 ) -> Dict[str, Dict]:
-    """Train FC, CNN, and LSTM autoencoders and compare test metrics."""
+    """Train FC, CNN, LSTM, UNet, Transformer, and Wavelet; compare test metrics."""
     device = _get_device()
     os.makedirs(results_dir, exist_ok=True)
     summary = {}
 
-    for arch in ["fc", "cnn", "lstm", "unet", "transformer"]:
+    for arch in ["fc", "cnn", "lstm", "unet", "transformer", "wavelet"]:
         print(f"\n{'='*50}")
         print(f"  Architecture: {arch.upper()}")
         print(f"{'='*50}")
+
+        _free_gpu()   # release previous model's cached memory before building next
 
         model = build_model(
             arch, config.WINDOW_SIZE, config.LATENT_DIM, config.NUM_CHANNELS
         )
         ckpt = os.path.join(results_dir, "checkpoints", f"{arch}_best.pt")
 
-        history = train(
-            model, train_loader, val_loader, noise_fn,
-            epochs=epochs, lr=lr, device=device,
-            checkpoint_path=ckpt, verbose=True,
-        )
-
-        if os.path.exists(ckpt):
-            model.load_state_dict(torch.load(ckpt, map_location=device))
+        if _is_trainable(model):
+            # ── Learned model: full training loop ──────────────────
+            history = train(
+                model, train_loader, val_loader, noise_fn,
+                epochs=epochs, lr=lr, device=device,
+                checkpoint_path=ckpt, verbose=True,
+            )
+            if os.path.exists(ckpt):
+                model.load_state_dict(torch.load(ckpt, map_location=device))
+        else:
+            # ── Non-parametric baseline (wavelet): skip training ───
+            # The wavelet uses an analytic threshold computed per sample;
+            # there are no weights to optimise.  Running the training loop
+            # would waste ~60 min doing forward passes that change nothing.
+            print(f"  Non-parametric baseline — skipping {epochs}-epoch training loop")
+            history = {"train_loss": [], "val_loss": [], "val_mse": []}
 
         test_metrics = evaluate_model(model, test_loader, noise_fn, device)
         summary[arch] = {"history": history, "test": test_metrics}
@@ -101,14 +129,17 @@ def run_architecture_comparison(
             f"  Test MSE={test_metrics['mse']:.6f} | "
             f"SNR_out={test_metrics['snr_out']:.2f} dB | "
             f"SNRi={test_metrics['snr_improvement']:.2f} dB\n"
-            f"  Tremor Power MAE (4-6Hz): In={test_metrics['tremor_mae_in']:.2f} | Out={test_metrics['tremor_mae_out']:.2f}"
+            f"  Tremor Power MAE (4-6Hz): In={test_metrics['tremor_mae_in']:.2f} | "
+            f"Out={test_metrics['tremor_mae_out']:.2f}"
         )
 
-        plot_training_curves(
-            history,
-            title=f"{arch.upper()} Training Curves",
-            save_path=os.path.join(results_dir, f"{arch}_training_curves.png"),
-        )
+        # Training curves — only meaningful for learned models
+        if history["train_loss"]:
+            plot_training_curves(
+                history,
+                title=f"{arch.upper()} Training Curves",
+                save_path=os.path.join(results_dir, f"{arch}_training_curves.png"),
+            )
 
         _save_reconstruction_example(
             model, test_loader, noise_fn, device,
@@ -138,7 +169,7 @@ def run_latent_dim_experiment(
     if latent_dims is None:
         latent_dims = config.LATENT_DIM_SWEEP
     if archs is None:
-        archs = ["fc", "cnn", "lstm", "unet", "transformer"]
+        archs = ["fc", "cnn", "lstm", "unet", "transformer", "wavelet"]
 
     device = _get_device()
     os.makedirs(results_dir, exist_ok=True)
@@ -146,9 +177,28 @@ def run_latent_dim_experiment(
     mse_results: Dict[str, List[float]] = {a: [] for a in archs}
     snr_results: Dict[str, List[float]] = {a: [] for a in archs}
 
+    # ── Pre-compute wavelet once — latent_dim is meaningless for it ──
+    _wavelet_mse, _wavelet_snr = None, None
+    if "wavelet" in archs:
+        print("\n--- Wavelet (non-parametric, evaluated once) ---")
+        _wm = build_model("wavelet", config.WINDOW_SIZE, 64, config.NUM_CHANNELS)
+        _wmet = evaluate_model(_wm, test_loader, noise_fn, device)
+        _wavelet_mse, _wavelet_snr = _wmet["mse"], _wmet["snr_out"]
+        print(f"  WAVELET | MSE={_wavelet_mse:.5f} | SNR={_wavelet_snr:.2f} dB")
+        del _wm
+        _free_gpu()
+
     for latent_dim in latent_dims:
         print(f"\n--- Latent dim = {latent_dim} ---")
         for arch in archs:
+            if arch == "wavelet":
+                # Replicate the single evaluation across all latent dim values
+                mse_results[arch].append(_wavelet_mse)
+                snr_results[arch].append(_wavelet_snr)
+                print(f"  WAVELET | latent={latent_dim:3d} | (same as above — no latent dim)")
+                continue
+
+            _free_gpu()
             model = build_model(
                 arch, config.WINDOW_SIZE, latent_dim, config.NUM_CHANNELS
             )
@@ -167,7 +217,7 @@ def run_latent_dim_experiment(
             mse_results[arch].append(m["mse"])
             snr_results[arch].append(m["snr_out"])
             print(
-                f"  {arch.upper():4s} | latent={latent_dim:3d} | "
+                f"  {arch.upper():12s} | latent={latent_dim:3d} | "
                 f"MSE={m['mse']:.5f} | SNR={m['snr_out']:.2f} dB"
             )
 
@@ -202,7 +252,7 @@ def run_noise_robustness_experiment(
     if test_sigmas is None:
         test_sigmas = config.NOISE_SIGMA_SWEEP
     if archs is None:
-        archs = ["fc", "cnn", "lstm", "unet", "transformer"]
+        archs = ["fc", "cnn", "lstm", "unet", "transformer", "wavelet"]
 
     device = _get_device()
     os.makedirs(results_dir, exist_ok=True)
@@ -211,19 +261,23 @@ def run_noise_robustness_experiment(
     snri_results: Dict[str, List[float]] = {a: [] for a in archs}
 
     for arch in archs:
+        _free_gpu()
         print(f"\n--- Noise robustness: {arch.upper()} (train σ={train_sigma}) ---")
         model = build_model(
             arch, config.WINDOW_SIZE, config.LATENT_DIM, config.NUM_CHANNELS
         )
         ckpt = os.path.join(results_dir, "checkpoints", f"{arch}_noise_robust.pt")
 
-        train(
-            model, train_loader, val_loader, train_noise,
-            epochs=epochs, lr=lr, device=device,
-            checkpoint_path=ckpt, verbose=False,
-        )
-        if os.path.exists(ckpt):
-            model.load_state_dict(torch.load(ckpt, map_location=device))
+        if _is_trainable(model):
+            train(
+                model, train_loader, val_loader, train_noise,
+                epochs=epochs, lr=lr, device=device,
+                checkpoint_path=ckpt, verbose=False,
+            )
+            if os.path.exists(ckpt):
+                model.load_state_dict(torch.load(ckpt, map_location=device))
+        else:
+            print(f"  Non-parametric — skipping training, evaluating directly")
 
         for sigma in test_sigmas:
             test_noise = make_noise_fn("gaussian", sigma=sigma)
@@ -269,7 +323,7 @@ def run_noise_type_experiment(
     "Train or test the models under multiple noise models and compare performance."
     """
     if archs is None:
-        archs = ["fc", "cnn", "lstm", "unet", "transformer"]
+        archs = ["fc", "cnn", "lstm", "unet", "transformer", "wavelet"]
 
     noise_types = ["gaussian", "masking", "impulse", "sinusoidal"]
     noise_kwargs = {
@@ -284,6 +338,7 @@ def run_noise_type_experiment(
     all_results: Dict[str, Dict] = {}
 
     for arch in archs:
+        _free_gpu()
         print(f"\n{'='*50}")
         print(f"  Noise-type cross-eval: {arch.upper()}")
         print(f"{'='*50}")
@@ -291,7 +346,43 @@ def run_noise_type_experiment(
         # snri_matrix[train_type][test_type]
         snri_matrix: Dict[str, Dict[str, float]] = {t: {} for t in noise_types}
 
+        # ── Non-parametric (wavelet): evaluate once per test noise type.
+        # The wavelet adapts its threshold analytically per sample, so its
+        # performance is independent of which noise it was "trained" on.
+        # All rows of the matrix are therefore identical — we fill them all
+        # from a single round of evaluation, saving 4× time.
+        probe_model = build_model(
+            arch, config.WINDOW_SIZE, config.LATENT_DIM, config.NUM_CHANNELS
+        )
+        if not _is_trainable(probe_model):
+            print(f"  Non-parametric — evaluating on all test types (rows identical)")
+            row: Dict[str, float] = {}
+            for test_type in noise_types:
+                test_noise = make_noise_fn(test_type, **noise_kwargs[test_type])
+                m = evaluate_model(probe_model, test_loader, test_noise, device)
+                row[test_type] = m["snr_improvement"]
+            row_str = "  ".join(f"{t[:4]}={row[t]:.1f}dB" for t in noise_types)
+            print(f"    test → {row_str}")
+            for train_type in noise_types:          # replicate across all rows
+                snri_matrix[train_type] = row.copy()
+            _save_reconstruction_example(
+                probe_model, test_loader,
+                make_noise_fn("gaussian", **noise_kwargs["gaussian"]), device,
+                save_path=os.path.join(results_dir, f"{arch}_noisetype_reconstruction.png"),
+                title=f"{arch.upper()} — wavelet denoising example",
+            )
+            plot_noise_type_matrix(
+                snri_matrix, noise_types, arch,
+                save_path=os.path.join(results_dir, f"{arch}_noise_type_matrix.png"),
+            )
+            all_results[arch] = snri_matrix
+            del probe_model
+            continue
+        del probe_model
+
+        # ── Parametric: train once per noise type, evaluate on all types ──
         for train_type in noise_types:
+            _free_gpu()
             train_noise = make_noise_fn(train_type, **noise_kwargs[train_type])
             model = build_model(
                 arch, config.WINDOW_SIZE, config.LATENT_DIM, config.NUM_CHANNELS
@@ -314,12 +405,11 @@ def run_noise_type_experiment(
                 m = evaluate_model(model, test_loader, test_noise, device)
                 snri_matrix[train_type][test_type] = m["snr_improvement"]
 
-            row = "  ".join(
+            row_str = "  ".join(
                 f"{t[:4]}={snri_matrix[train_type][t]:.1f}dB" for t in noise_types
             )
-            print(f"    test → {row}")
+            print(f"    test → {row_str}")
 
-            # Save one reconstruction example per train-noise type
             _save_reconstruction_example(
                 model, test_loader, train_noise, device,
                 save_path=os.path.join(
@@ -369,7 +459,13 @@ def run_hyperparameter_search(
     best_config = None
     table = []
 
-    loader_kwargs = dict(pin_memory=torch.cuda.is_available(), num_workers=0)
+    _nw = config.NUM_WORKERS
+    loader_kwargs = dict(
+        pin_memory=config.PIN_MEMORY,
+        num_workers=_nw,
+        persistent_workers=_nw > 0,
+        prefetch_factor=config.PREFETCH_FACTOR if _nw > 0 else None,
+    )
 
     for lr in lr_list:
         for bs in batch_list:
