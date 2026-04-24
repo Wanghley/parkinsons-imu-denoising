@@ -16,6 +16,7 @@ Pass --tag my_label to append a human-readable suffix: results/<timestamp>_my_la
 import argparse
 import json
 import os
+import time
 import warnings
 from datetime import datetime
 
@@ -146,13 +147,18 @@ def main():
         print("  -> NVIDIA GPU enabled!")
     print("=" * 60 + "\n")
 
+    t0 = time.time()
     train_loader, val_loader, test_loader = _build_loaders(args)
+    print(f"Dataset Loading Took: {time.time() - t0:.1f}s")
+    
+    global_start = time.time()
 
     noise_fn = make_noise_fn("gaussian", sigma=config.GAUSSIAN_SIGMA)
 
     run_all = args.exp == "all"
 
     if run_all or args.exp == "hyperparam":
+        t0 = time.time()
         print("\n" + "=" * 60)
         print("EXPERIMENT: Hyperparameter Search")
         print("=" * 60)
@@ -164,10 +170,12 @@ def main():
             results_dir=run_dir,
             epochs=min(args.epochs, 50),
         )
+        print(f"--> Hyperparameter Search Took: {time.time() - t0:.1f}s")
 
     if run_all or args.exp == "arch":
+        t0 = time.time()
         print("\n" + "=" * 60)
-        print("EXPERIMENT: Architecture Comparison (FC / CNN / LSTM)")
+        print("EXPERIMENT: Architecture Comparison (FC / CNN / LSTM / Transformer)")
         print("=" * 60)
         run_architecture_comparison(
             train_loader, val_loader, test_loader, noise_fn,
@@ -175,8 +183,10 @@ def main():
             epochs=args.epochs,
             lr=args.lr,
         )
+        print(f"--> Architecture Comparison Took: {time.time() - t0:.1f}s")
 
     if run_all or args.exp == "latent":
+        t0 = time.time()
         print("\n" + "=" * 60)
         print("EXPERIMENT: Latent Dimension Sweep")
         print("=" * 60)
@@ -186,10 +196,12 @@ def main():
             epochs=args.epochs,
             lr=args.lr,
         )
+        print(f"--> Latent Dimension Sweep Took: {time.time() - t0:.1f}s")
 
     if run_all or args.exp == "noise":
+        t0 = time.time()
         print("\n" + "=" * 60)
-        print("EXPERIMENT: Noise Robustness")
+        print("EXPERIMENT: Robustness to Noise Level")
         print("=" * 60)
         run_noise_robustness_experiment(
             train_loader, val_loader, test_loader,
@@ -198,8 +210,10 @@ def main():
             epochs=args.epochs,
             lr=args.lr,
         )
+        print(f"--> Noise Robustness Took: {time.time() - t0:.1f}s")
 
     if run_all or args.exp == "noise_types":
+        t0 = time.time()
         print("\n" + "=" * 60)
         print("EXPERIMENT: Noise-Type Cross-Evaluation (4×4 matrix)")
         print("=" * 60)
@@ -210,7 +224,10 @@ def main():
             lr=args.lr,
         )
 
-    print("\nAll experiments complete. Results saved to:", run_dir)
+        print(f"--> Noise-Type Cross-Evaluation Took: {time.time() - t0:.1f}s")
+
+    t_total = time.time() - global_start
+    print(f"\nAll experiments complete in {t_total:.1f}s. Results saved to: {run_dir}")
 
 
 if __name__ == "__main__":
