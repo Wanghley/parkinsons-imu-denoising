@@ -44,6 +44,32 @@ def snr_improvement(
     return compute_snr(clean, reconstructed, eps) - compute_snr(clean, noisy, eps)
 
 
+def compute_tremor_power_mae(clean: torch.Tensor, target: torch.Tensor, sample_rate: float = 100.0) -> float:
+    """
+    Computes Tremor Band Power (4-6 Hz) Mean Absolute Error.
+    Useful for Parkinson's datasets to evaluate if the crucial frequency band is preserved.
+    """
+    signal_length = clean.shape[-1]
+    freqs = torch.fft.rfftfreq(signal_length, d=1.0/sample_rate)
+    
+    # Indices for the 4-6 Hz band
+    mask = (freqs >= 4.0) & (freqs <= 6.0)
+    if not mask.any():
+        return 0.0 # handle case where sampling rate/length doesn't cover band
+        
+    mask = mask.to(clean.device)
+    
+    clean_rfft = torch.fft.rfft(clean, dim=-1, norm="ortho")
+    target_rfft = torch.fft.rfft(target, dim=-1, norm="ortho")
+    
+    # Power = abs(fft)^2
+    clean_power = (torch.abs(clean_rfft)**2)[..., mask].sum(dim=-1)
+    target_power = (torch.abs(target_rfft)**2)[..., mask].sum(dim=-1)
+    
+    mae = torch.abs(clean_power - target_power).mean()
+    return mae.item()
+
+
 @torch.no_grad()
 def evaluate_model(
     model: nn.Module,
@@ -75,4 +101,6 @@ def evaluate_model(
         "snr_out":         compute_snr(clean, recon),
         "snr_in":          compute_snr(clean, noisy),
         "snr_improvement": snr_improvement(clean, noisy, recon),
+        "tremor_mae_out":  compute_tremor_power_mae(clean, recon),
+        "tremor_mae_in":   compute_tremor_power_mae(clean, noisy),
     }
