@@ -2,6 +2,13 @@ import math
 import torch
 import torch.nn as nn
 
+def init_weights(m):
+    """He/Kaiming initialization for ReLU activations."""
+    if isinstance(m, (nn.Conv1d, nn.ConvTranspose1d, nn.Linear)):
+        nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+
 
 # ──────────────────────────────────────────────
 # Baseline: Fully-Connected (MLP) Autoencoder
@@ -16,7 +23,7 @@ class FCAutoencoder(nn.Module):
     def __init__(
         self,
         signal_length: int = 1024,
-        latent_dim: int = 64,
+        latent_dim: int = 256,
         num_channels: int = 1,
     ):
         super().__init__()
@@ -25,25 +32,35 @@ class FCAutoencoder(nn.Module):
         self.num_channels = num_channels
 
         flat = signal_length * num_channels
+        # Hidden sizes scale with latent_dim so layers always form a proper
+        # funnel (h1 > h2 > latent) regardless of the chosen latent dimension.
+        h1 = max(latent_dim * 4, 512)   # e.g. 1024 at latent=256
+        h2 = max(latent_dim * 2, 256)   # e.g.  512 at latent=256
         self.encoder = nn.Sequential(
-            nn.Linear(flat, 256),
+            nn.Linear(flat, h1),
+            nn.BatchNorm1d(h1),
             nn.ReLU(),
             nn.Dropout(p=0.2),
-            nn.Linear(256, 128),
+            nn.Linear(h1, h2),
+            nn.BatchNorm1d(h2),
             nn.ReLU(),
             nn.Dropout(p=0.2),
-            nn.Linear(128, latent_dim),
+            nn.Linear(h2, latent_dim),
         )
 
         self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 128),
+            nn.Linear(latent_dim, h2),
+            nn.BatchNorm1d(h2),
             nn.ReLU(),
             nn.Dropout(p=0.2),
-            nn.Linear(128, 256),
+            nn.Linear(h2, h1),
+            nn.BatchNorm1d(h1),
             nn.ReLU(),
             nn.Dropout(p=0.2),
-            nn.Linear(256, flat),
+            nn.Linear(h1, flat),
         )
+        
+        self.apply(init_weights)
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, C, L) → (B, C*L)
@@ -55,12 +72,27 @@ class FCAutoencoder(nn.Module):
         return out.view(out.size(0), self.num_channels, self.signal_length)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.decode(self.encode(x))
-
+        return x + self.decode(self.encode(x))  # Global residual connection
 
 # ──────────────────────────────────────────────
 # Advanced: 1D Convolutional Autoencoder
 # ──────────────────────────────────────────────
+class ResBlock1d(nn.Module):
+    """Residual block for 1D CNN."""
+    def __init__(self, channels):
+        super().__init__()
+        self.conv1 = nn.Conv1d(channels, channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(channels)
+        self.conv2 = nn.Conv1d(channels, channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm1d(channels)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        res = x
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        return self.relu(out + res)
+
 class CNNAutoencoder(nn.Module):
     """
     1D-CNN encoder-decoder.
@@ -85,16 +117,24 @@ class CNNAutoencoder(nn.Module):
 
         self.encoder_conv = nn.Sequential(
             nn.Conv1d(num_channels, 32,  kernel_size=3, stride=2, padding=1),  # L/2
+            nn.BatchNorm1d(32),
             nn.ReLU(),
+            ResBlock1d(32),
             nn.Dropout(p=0.1),
             nn.Conv1d(32,  64,  kernel_size=3, stride=2, padding=1),           # L/4
+            nn.BatchNorm1d(64),
             nn.ReLU(),
+            ResBlock1d(64),
             nn.Dropout(p=0.1),
             nn.Conv1d(64,  128, kernel_size=3, stride=2, padding=1),           # L/8
+            nn.BatchNorm1d(128),
             nn.ReLU(),
+            ResBlock1d(128),
             nn.Dropout(p=0.1),
             nn.Conv1d(128, 256, kernel_size=3, stride=2, padding=1),           # L/16
+            nn.BatchNorm1d(256),
             nn.ReLU(),
+            ResBlock1d(256),
         )
 
         flat_size = self._bottleneck_channels * self._bottleneck_len
@@ -102,16 +142,24 @@ class CNNAutoencoder(nn.Module):
         self.decoder_fc = nn.Linear(latent_dim, flat_size)
 
         self.decoder_conv = nn.Sequential(
+            ResBlock1d(256),
             nn.ConvTranspose1d(256, 128, kernel_size=4, stride=2, padding=1),  # ×2
+            nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Dropout(p=0.1),
+            ResBlock1d(128),
             nn.ConvTranspose1d(128, 64,  kernel_size=4, stride=2, padding=1),  # ×2
+            nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Dropout(p=0.1),
+            ResBlock1d(64),
             nn.ConvTranspose1d(64,  32,  kernel_size=4, stride=2, padding=1),  # ×2
+            nn.BatchNorm1d(32),
             nn.ReLU(),
+            ResBlock1d(32),
             nn.ConvTranspose1d(32,  num_channels, kernel_size=4, stride=2, padding=1),  # ×2
         )
+        self.apply(init_weights)
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, C, L) — already channel-first, no unsqueeze needed
@@ -129,7 +177,7 @@ class CNNAutoencoder(nn.Module):
         return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.decode(self.encode(x))
+        return x + self.decode(self.encode(x))  # Global residual connection
 
 
 # ──────────────────────────────────────────────
@@ -174,13 +222,14 @@ class LSTMAutoencoder(nn.Module):
         self.decoder_h0 = nn.Linear(latent_dim, num_layers * hidden_size)
         self.decoder_c0 = nn.Linear(latent_dim, num_layers * hidden_size)
         self.decoder_lstm = nn.LSTM(
-            input_size=num_channels,
+            input_size=latent_dim,  # Feeding latent z at every step
             hidden_size=hidden_size,
             num_layers=num_layers,
             batch_first=True,
             dropout=0.2 if num_layers > 1 else 0.0,
         )
         self.output_fc = nn.Linear(hidden_size, num_channels)
+        self.apply(init_weights)
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, C, L) → (B, L, C) for LSTM
@@ -197,14 +246,14 @@ class LSTMAutoencoder(nn.Module):
         # Build initial hidden/cell states from latent vector
         h0 = self.decoder_h0(z).view(B, self.num_layers, self.hidden_size).permute(1, 0, 2).contiguous()
         c0 = self.decoder_c0(z).view(B, self.num_layers, self.hidden_size).permute(1, 0, 2).contiguous()
-        # Teacher-forcing style: feed zeros as input, let hidden state carry info
-        inp = torch.zeros(B, self.signal_length, self.num_channels, device=z.device)
+        # Feed the latent vector z as input at every timestep to prevent scale collapse
+        inp = z.unsqueeze(1).expand(B, self.signal_length, -1)  # (B, L, latent_dim)
         out, _ = self.decoder_lstm(inp, (h0, c0))  # (B, L, H)
         # (B, L, C) → (B, C, L)
         return self.output_fc(out).permute(0, 2, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.decode(self.encode(x))
+        return x + self.decode(self.encode(x))  # Global residual connection
 
 
 # ──────────────────────────────────────────────
@@ -354,16 +403,17 @@ class TransformerAutoencoder(nn.Module):
         x = x.reshape(B, C, self.num_patches, self.patch_size)
         x = x.permute(0, 2, 1, 3).reshape(B, self.num_patches, C * self.patch_size)
 
-        tokens  = self.patch_embed(x) + self.pos_embed      # (B, P, d_model)
+        tokens  = self.patch_embed(x) + self.pos_embed       # (B, P, d_model)
         enc_out = self.transformer_enc(tokens)               # (B, P, d_model)
         pooled  = enc_out.mean(dim=1)                        # (B, d_model)
-        return self.encoder_fc(pooled)                       # (B, latent_dim)
+        return self.encoder_fc(pooled), tokens               # (B, latent_dim), (B, P, d_model)
 
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
+    def decode(self, z: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
         B = z.size(0)
         # Tile latent to patch sequence, add positional info
         h = self.decoder_fc(z).unsqueeze(1).expand(-1, self.num_patches, -1)  # (B, P, d_model)
-        h = h + self.pos_embed
+        # Long-skip connection: add the encoder tokens to the decoder input
+        h = h + self.pos_embed + tokens
         dec_out = self.transformer_dec(h)                    # (B, P, d_model)
         patches = self.patch_reconstruct(dec_out)            # (B, P, C*patch_size)
 
@@ -372,7 +422,123 @@ class TransformerAutoencoder(nn.Module):
         return out.permute(0, 2, 1, 3).reshape(B, self.num_channels, self.signal_length)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.decode(self.encode(x))
+        z, tokens = self.encode(x)
+        return x + self.decode(z, tokens)  # Global residual + Long-skip
+
+
+# ──────────────────────────────────────────────
+# Classical Wavelet Denoising Baseline
+# ──────────────────────────────────────────────
+class WaveletDenoiser(nn.Module):
+    """
+    Non-parametric Donoho–Johnstone soft-thresholding baseline.
+
+    For each (channel, sample) pair the denoiser:
+      1. Decomposes the signal with a Daubechies-8 DWT to ``level`` levels.
+      2. Estimates per-level noise standard deviation from the finest-scale
+         detail coefficients via the median absolute deviation (MAD) estimator:
+         σ̂ = median(|d|) / 0.6745  (Donoho & Johnstone, 1994).
+      3. Applies the universal soft threshold
+         λ = σ̂ · √(2 ln N)  to all detail subbands.
+      4. Reconstructs with the inverse DWT.
+
+    This is a non-trainable baseline; it contains a single dummy ``nn.Parameter``
+    (``requires_grad=False``) so the optimiser initialises without error and
+    ``train()`` / ``eval()`` calls are no-ops (no weights to update).
+    The forward pass runs on CPU via PyWavelets then moves the result back to the
+    original device — this is acceptable for evaluation but not speed-critical.
+
+    Parameters
+    ----------
+    signal_length : int   ignored; kept for API compatibility with build_model.
+    num_channels  : int   ignored; inferred from input at runtime.
+    latent_dim    : int   ignored; kept for API compatibility.
+    wavelet       : str   PyWavelets wavelet name (default ``'db8'``).
+    level         : int   DWT decomposition depth (default ``4``).
+    """
+
+    def __init__(
+        self,
+        signal_length: int = 1024,
+        latent_dim: int = 64,
+        num_channels: int = 1,
+        wavelet: str = "db8",
+        level: int = 4,
+    ) -> None:
+        super().__init__()
+        self.wavelet = wavelet
+        self.level   = level
+        # Dummy parameter: keeps optimizer from raising ValueError on empty param list
+        # while ensuring zero gradient updates (requires_grad=False).
+        self._dummy = nn.Parameter(torch.zeros(1), requires_grad=False)
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _denoise_one(args):
+        """
+        Denoise a single (channel, signal) pair.  Defined as a static method
+        so it can be pickled and sent to ProcessPoolExecutor workers.
+
+        args: (sig_list, wavelet, level, L)  → list[float] of length L
+        """
+        import pywt, numpy as _np
+        sig_list, wavelet, level, L = args
+        sig    = _np.array(sig_list, dtype=_np.float32)
+        coeffs = pywt.wavedec(sig, wavelet, level=level)
+        sigma  = float(_np.median(_np.abs(coeffs[-1]))) / 0.6745
+        thr    = sigma * _np.sqrt(2.0 * _np.log(max(L, 2)))
+        denoised = [coeffs[0]] + [
+            pywt.threshold(d, thr, mode="soft") for d in coeffs[1:]
+        ]
+        return pywt.waverec(denoised, wavelet)[:L].tolist()
+
+    # ------------------------------------------------------------------
+    @torch.no_grad()
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Parameters
+        ----------
+        x : Tensor, shape (B, C, L)  — noisy input (any dtype, any device).
+
+        Returns
+        -------
+        Tensor, shape (B, C, L)  — soft-thresholded reconstruction.
+
+        All B×C channels are processed in parallel across CPU cores so that
+        the CPU stays fully occupied while the GPU handles the neural models.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+        import os
+
+        device = x.device
+        dtype  = x.dtype
+        # Convert via Python lists to stay NumPy-ABI-agnostic
+        x_list = x.detach().cpu().float().tolist()   # (B, C, L) nested list
+
+        B = len(x_list)
+        C = len(x_list[0])
+        L = len(x_list[0][0])
+
+        # Build flat task list: (sig_list, wavelet, level, L) for every (b, c)
+        tasks = [
+            (x_list[b][c], self.wavelet, self.level, L)
+            for b in range(B)
+            for c in range(C)
+        ]
+
+        # Thread pool: pywt/numpy release the GIL, so threads run truly in parallel.
+        # Use all available cores (capped at B*C tasks — no idle threads).
+        n_workers = min(len(tasks), os.cpu_count() or 1)
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            results = list(pool.map(WaveletDenoiser._denoise_one, tasks))
+
+        # Reshape flat results → (B, C, L) nested list
+        out = [
+            [results[b * C + c] for c in range(C)]
+            for b in range(B)
+        ]
+        # Build tensor from Python lists — no numpy bridge needed
+        return torch.tensor(out, dtype=dtype, device=device)          # (B, C, L)
 
 
 # ──────────────────────────────────────────────
@@ -384,7 +550,7 @@ def build_model(
     latent_dim: int = 64,
     num_channels: int = 1,
 ) -> nn.Module:
-    """Return a model by name: 'fc', 'cnn', 'lstm', 'unet', or 'transformer'."""
+    """Return a model by name: 'fc', 'cnn', 'lstm', 'unet', 'transformer', or 'wavelet'."""
     name = name.lower()
     if name == "fc":
         return FCAutoencoder(signal_length, latent_dim, num_channels)
@@ -396,5 +562,10 @@ def build_model(
         return UNet1D(signal_length, latent_dim, num_channels)
     elif name == "transformer":
         return TransformerAutoencoder(signal_length, latent_dim, num_channels)
+    elif name == "wavelet":
+        return WaveletDenoiser(signal_length, latent_dim, num_channels)
     else:
-        raise ValueError(f"Unknown model '{name}'. Choose from 'fc', 'cnn', 'lstm', 'unet', 'transformer'.")
+        raise ValueError(
+            f"Unknown model '{name}'. "
+            "Choose from 'fc', 'cnn', 'lstm', 'unet', 'transformer', 'wavelet'."
+        )
