@@ -15,7 +15,8 @@ from typing import Callable, Dict, List
 
 # Module-level cache for the Triton availability check.
 # None = not yet tested; True/False = result of the one-time probe.
-_TRITON_OK: bool | None = None
+from typing import Optional
+_TRITON_OK: Optional[bool] = None
 
 
 def _triton_ok() -> bool:
