@@ -1,0 +1,18 @@
+# ignore python cache files
+__pycache__/
+*.pyc
+
+# ignore virtual environment
+venv/
+.env/
+.venv/
+
+# ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# ignore data files
+data/
+physionet.org/
+
+# ignore .claude/
+.claude/
