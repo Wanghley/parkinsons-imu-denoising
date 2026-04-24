@@ -1,9 +1,58 @@
-\begin{thebibliography}{10}
+\begin{thebibliography}{31}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi: #1}\else
   \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Bai et~al.(2018)Bai, Kolter, and Koltun]{bai2018tcn}
+Shaojie Bai, J~Zico Kolter, and Vladlen Koltun.
+\newblock An empirical evaluation of generic convolutional and recurrent
+  networks for sequence modeling.
+\newblock \emph{arXiv preprint arXiv:1803.01271}, 2018.
+
+\bibitem[Bloem et~al.(2021)Bloem, Dorsey, and Okun]{bloem2021telehealth}
+Bas~R Bloem, E~Ray Dorsey, and Michael~S Okun.
+\newblock Telehealth for advanced parkinson's disease.
+\newblock \emph{NEJM Evidence}, 1\penalty0 (1), 2021.
+
+\bibitem[Camps et~al.(2018)Camps, Sama, Martin, Rodriguez-Martin, Perez-Lopez,
+  Arostegui, Cabestany, Catala, Alcaine, Mestre, et~al.]{camps2018deep}
+Jordi Camps, Albert Sama, Mario Martin, Daniel Rodriguez-Martin, Carlos
+  Perez-Lopez, Juan Manuel~Morales Arostegui, Joan Cabestany, Andreu Catala,
+  Sheila Alcaine, Berta Mestre, et~al.
+\newblock Deep learning for freezing of gait detection in parkinson's disease
+  patients in their homes using a waist-worn inertial measurement unit.
+\newblock \emph{Knowledge-Based Systems}, 139:\penalty0 119--131, 2018.
+
+\bibitem[Delrobaei et~al.(2018)Delrobaei, Bray, Tavafoghi, Goldenberg, and
+  McIsaac]{delrobaei2018ambulatory}
+Mehdi Delrobaei, Natasha Bray, Masoud Tavafoghi, Mark Goldenberg, and Kenneth
+  McIsaac.
+\newblock Towards remote monitoring of parkinson's disease tremor using
+  wearable motion capture systems.
+\newblock \emph{Journal of the Neurological Sciences}, 384:\penalty0 38--45,
+  2018.
+
+\bibitem[Deuschl et~al.(2000)Deuschl, Raethjen, Baron, Lindemann, Wilms, and
+  Krack]{deuschl2000tremor}
+G{\"u}nther Deuschl, Johannes Raethjen, R{\"u}diger Baron, Michael Lindemann,
+  Holger Wilms, and Paul Krack.
+\newblock The pathophysiology of parkinsonian tremor: A review.
+\newblock \emph{Journal of Neurology}, 247\penalty0 (S5):\penalty0 V33--V48,
+  2000.
+
+\bibitem[Donoho(1995)]{donoho1995wavelet}
+David~L Donoho.
+\newblock De-noising by soft-thresholding.
+\newblock \emph{IEEE Transactions on Information Theory}, 41\penalty0
+  (3):\penalty0 613--627, 1995.
+
+\bibitem[Dorsey et~al.(2018)Dorsey, Sherer, Okun, and Bloem]{dorsey2018global}
+E~Ray Dorsey, Todd Sherer, Michael~S Okun, and Bas~R Bloem.
+\newblock The emerging evidence of the parkinson pandemic.
+\newblock \emph{Journal of Parkinson's Disease}, 8\penalty0 (s1):\penalty0
+  S3--S8, 2018.
 
 \bibitem[Dosovitskiy et~al.(2021)Dosovitskiy, Beyer, Kolesnikov, Weissenborn,
   Zhai, Unterthiner, Dehghani, Minderer, Heigold, Gelly,
@@ -11,8 +60,8 @@
 Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn,
   Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg
   Heigold, Sylvain Gelly, et~al.
-\newblock An image is worth 16x16 words: Transformers for image recognition at
-  scale.
+\newblock An image is worth 16$\times$16 words: Transformers for image
+  recognition at scale.
 \newblock In \emph{International Conference on Learning Representations
   (ICLR)}, 2021.
 
@@ -25,11 +74,35 @@ Ary~L Goldberger, Luis~AN Amaral, Leon Glass, Jeffrey~M Hausdorff, Plamen~Ch
   research resource for complex physiologic signals.
 \newblock \emph{Circulation}, 101\penalty0 (23):\penalty0 e215--e220, 2000.
 
+\bibitem[Gondara(2016)]{gondara2016medical}
+Lovedeep Gondara.
+\newblock Medical image denoising using convolutional denoising autoencoders.
+\newblock In \emph{IEEE International Conference on Data Mining Workshops
+  (ICDMW)}, pp.\  241--246, 2016.
+
 \bibitem[Goodfellow et~al.(2016)Goodfellow, Bengio, and
   Courville]{goodfellow2016deep}
 Ian Goodfellow, Yoshua Bengio, and Aaron Courville.
-\newblock \emph{Deep learning}.
+\newblock \emph{Deep Learning}.
 \newblock MIT Press, 2016.
+
+\bibitem[He et~al.(2016)He, Zhang, Ren, and Sun]{he2016deep}
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+\newblock Deep residual learning for image recognition.
+\newblock In \emph{IEEE/CVF Conference on Computer Vision and Pattern
+  Recognition (CVPR)}, pp.\  770--778, 2016.
+
+\bibitem[Hochreiter \& Schmidhuber(1997)Hochreiter and
+  Schmidhuber]{hochreiter1997long}
+Sepp Hochreiter and J{\"u}rgen Schmidhuber.
+\newblock Long short-term memory.
+\newblock \emph{Neural Computation}, 9\penalty0 (8):\penalty0 1735--1780, 1997.
+
+\bibitem[Jankovic(2008)]{jankovic2008parkinsons}
+Joseph Jankovic.
+\newblock Parkinson's disease: Clinical features and diagnosis.
+\newblock \emph{Journal of Neurology, Neurosurgery \& Psychiatry}, 79\penalty0
+  (4):\penalty0 368--376, 2008.
 
 \bibitem[Kingma \& Ba(2015)Kingma and Ba]{kingma2015adam}
 Diederik~P Kingma and Jimmy Ba.
@@ -37,13 +110,74 @@ Diederik~P Kingma and Jimmy Ba.
 \newblock In \emph{International Conference on Learning Representations
   (ICLR)}, 2015.
 
+\bibitem[Klucken et~al.(2013)Klucken, Barth, Kugler, Schlachetzki, Henze,
+  Marxreiter, Kohl, Steidl, Hornegger, Eskofier, et~al.]{klucken2013unbiased}
+Jochen Klucken, J{\"u}rgen Barth, Patrick Kugler, Johannes Schlachetzki, Thomas
+  Henze, Franz Marxreiter, Zacharias Kohl, Rainer Steidl, Joachim Hornegger,
+  Bjoern Eskofier, et~al.
+\newblock Unbiased and mobile gait analysis detects motor impairment in
+  parkinson's disease.
+\newblock \emph{PloS ONE}, 8\penalty0 (2):\penalty0 e56956, 2013.
+
+\bibitem[Liu et~al.(2022)Liu, Wu, Wang, and Long]{liu2022time}
+Yong Liu, Haixu Wu, Jianmin Wang, and Mingsheng Long.
+\newblock Non-stationary transformers: Exploring the stationarity in time
+  series forecasting.
+\newblock \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+  35, 2022.
+
+\bibitem[Lonini et~al.(2018)Lonini, Dai, Shawen, Simuni, Poon, Shimanovich,
+  Greenacre, Shah, Botkin, Walter, et~al.]{lonini2018smartwatch}
+Luca Lonini, Aashish Dai, Nicholas Shawen, Tanya Simuni, Cynthia Poon, Lena
+  Shimanovich, Meredith Greenacre, Roopal Shah, Cheryl Botkin, Alexander
+  Walter, et~al.
+\newblock Wearable sensors for parkinson's disease: Which data are worth
+  collecting for training symptom detection models.
+\newblock \emph{npj Digital Medicine}, 1\penalty0 (1):\penalty0 64, 2018.
+
+\bibitem[Maetzler et~al.(2013)Maetzler, Domingos, Srulijes, Ferreira, and
+  Bloem]{maetzler2013quantitative}
+Walter Maetzler, Josefa Domingos, Karin Srulijes, Joaquim~J Ferreira, and Bas~R
+  Bloem.
+\newblock Quantitative wearable sensors for objective assessment of parkinson's
+  disease.
+\newblock \emph{Movement Disorders}, 28\penalty0 (12):\penalty0 1628--1637,
+  2013.
+
+\bibitem[Mancini et~al.(2011)Mancini, Rocchi, Horak, and
+  Chiari]{mancini2011trunk}
+Martina Mancini, Laura Rocchi, Fay~B Horak, and Lorenzo Chiari.
+\newblock Trunk accelerometry reveals postural instability in untreated
+  parkinson's disease.
+\newblock \emph{Parkinsonism \& Related Disorders}, 17\penalty0 (8):\penalty0
+  557--562, 2011.
+
+\bibitem[Patel et~al.(2009)Patel, Lorincz, Hughes, Huggins, Growdon, Standaert,
+  Akay, Dy, Welsh, and Bonato]{patel2009monitoring}
+Shyamal Patel, Konrad Lorincz, Richard Hughes, Nancy Huggins, John Growdon,
+  David Standaert, Metin Akay, Jennifer Dy, Matt Welsh, and Paolo Bonato.
+\newblock Monitoring motor fluctuations in patients with parkinson's disease
+  using wearable sensors.
+\newblock \emph{IEEE Transactions on Information Technology in Biomedicine},
+  13\penalty0 (6):\penalty0 864--873, 2009.
+
 \bibitem[Poewe et~al.(2017)Poewe, Seppi, Tanner, Halliday, Brundin, Volkmann,
   Schrag, and Lang]{poewe2017parkinson}
 Werner Poewe, Klaus Seppi, Caroline~M Tanner, Glenda~M Halliday, Patrik
   Brundin, Jens Volkmann, Anette-Elina Schrag, and Anthony~E Lang.
 \newblock Parkinson disease.
 \newblock \emph{Nature Reviews Disease Primers}, 3\penalty0 (1):\penalty0
-  1--21, 2017.
+  17013, 2017.
+
+\bibitem[Rigas et~al.(2012)Rigas, Tzallas, Tsipouras, Bougia, Tripoliti, Baga,
+  Fotiadis, Tsouli, and Konitsiotis]{rigas2012assessment}
+George Rigas, Alexandros~T Tzallas, Markos~G Tsipouras, Paraskevi Bougia,
+  Evanthia~E Tripoliti, Dimitra Baga, Dimitrios~I Fotiadis, Sofia~G Tsouli, and
+  Spiridon Konitsiotis.
+\newblock Assessment of tremor activity in the parkinson's disease using a set
+  of wearable sensors.
+\newblock \emph{IEEE Transactions on Information Technology in Biomedicine},
+  16\penalty0 (3):\penalty0 478--487, 2012.
 
 \bibitem[Ronneberger et~al.(2015)Ronneberger, Fischer, and
   Brox]{ronneberger2015unet}
@@ -51,6 +185,33 @@ Olaf Ronneberger, Philipp Fischer, and Thomas Brox.
 \newblock {U-Net}: Convolutional networks for biomedical image segmentation.
 \newblock In \emph{International Conference on Medical Image Computing and
   Computer-Assisted Intervention (MICCAI)}, pp.\  234--241, 2015.
+
+\bibitem[Salarian et~al.(2004)Salarian, Russmann, Vingerhoets, Dehollain,
+  Blanc, Burkhard, and Aminian]{salarian2004gait}
+Arash Salarian, Heike Russmann, Francois~JG Vingerhoets, Catherine Dehollain,
+  Yves Blanc, Pierre~R Burkhard, and Kamiar Aminian.
+\newblock Gait assessment in parkinson's disease: Toward an ambulatory system
+  for long-term monitoring.
+\newblock \emph{IEEE Transactions on Biomedical Engineering}, 51\penalty0
+  (8):\penalty0 1434--1443, 2004.
+
+\bibitem[Srivastava et~al.(2014)Srivastava, Hinton, Krizhevsky, Sutskever, and
+  Salakhutdinov]{srivastava2014dropout}
+Nitish Srivastava, Geoffrey Hinton, Alex Krizhevsky, Ilya Sutskever, and Ruslan
+  Salakhutdinov.
+\newblock Dropout: A simple way to prevent neural networks from overfitting.
+\newblock \emph{Journal of Machine Learning Research}, 15\penalty0
+  (1):\penalty0 1929--1958, 2014.
+
+\bibitem[Tzallas et~al.(2014)Tzallas, Tsipouras, Rigas, Tsalikakis, Karvounis,
+  Chondrogiorgi, Psomadellis, Cancela, Pastorino, Waldmeyer,
+  et~al.]{tzallas2014unified}
+Alexandros~T Tzallas, Markos~G Tsipouras, George Rigas, Dimitrios~G Tsalikakis,
+  Evaggelos~C Karvounis, Maria Chondrogiorgi, Faidra Psomadellis, Jorge
+  Cancela, Matteo Pastorino, Mikel~Tzafestas Waldmeyer, et~al.
+\newblock A unified framework for the automated detection and assessment of
+  tremor, gait, and dyskinesia in parkinson's disease.
+\newblock \emph{Sensors}, 14\penalty0 (4):\penalty0 6129--6145, 2014.
 
 \bibitem[Varghese et~al.(2023)Varghese, Fujarski, Hahn, Stenner, Warnecke,
   Stummer, Gess, Gronostay, Duning, Lohmann, et~al.]{varghese2023pads}
