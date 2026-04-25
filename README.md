@@ -10,6 +10,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
+  <img src="results/20260424_191528_arch_full_100eph_dcc/unet_reconstruction.png" alt="Logo" width="400" height="200">
   <h3 align="center">Denoising Autoencoders for 1D Time-Series Signals</h3>
   <p align="center">
     ECE 685D — Project 2 &nbsp;|&nbsp; PyTorch implementations of FC, 1D-CNN, and LSTM denoising autoencoders
@@ -25,6 +26,7 @@
   <summary>Table of Contents</summary>
   <ol>
     <li><a href="#about-the-project">About The Project</a></li>
+    <li><a href="#dataset">Dataset</a></li>
     <li><a href="#built-with">Built With</a></li>
     <li><a href="#project-structure">Project Structure</a></li>
     <li><a href="#getting-started">Getting Started</a></li>
@@ -54,6 +56,113 @@ L(θ) = E[‖x − f_θ(x_noisy)‖²]
 ```
 
 Beyond basic denoising, the project systematically studies how architectural choices (FC vs. CNN vs. LSTM), latent dimension size, and noise type affect denoising performance.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Dataset
+
+This project uses the **PADS — Parkinson's Disease Smartwatch Dataset** (version 1.0.0), published on [PhysioNet](https://doi.org/10.13026/m0w9-zx22).
+
+### Overview
+
+PADS comprises clinical assessments of **469 individuals** across three groups — Parkinson's Disease (PD) patients, Differential Diagnosis (DD) cases (essential tremor, atypical Parkinsonism, multiple sclerosis, etc.), and Healthy Controls (HC). Each subject wore two **Apple Watch Series 4** smartwatches (one per wrist) and performed **11 interactive movement tasks** designed by expert neurologists to provoke subtle movement pathologies such as tremor. In total, **5,159 measurement steps** were captured.
+
+Sensors recorded **acceleration (g)** and **rotation (rad/s)** at **100 Hz** across three axes (X, Y, Z) for each wrist.
+
+### Movement Tasks
+
+| Step | Duration (s) | Description | Category |
+|------|-------------|-------------|----------|
+| 1a | 20 | Resting with closed eyes (standardised posture) | Resting |
+| 1b | 20 | Resting while calculating serial sevens | Resting |
+| 2  | 10 | Lift and extend arms | Postural |
+| 3  | 10 | Remain arms lifted | Postural |
+| 4  | 10 | Hold 1 kg weight in each hand | Postural |
+| 5  | 10 | Finger-to-examiner pointing (right then left) | Kinetic |
+| 6  | 10 | Drink-from-glass gesture (right then left) | Kinetic |
+| 7  | 10 | Cross and extend both arms | Kinetic |
+| 8  | 10 | Bring both index fingers together | — |
+| 9  | 10 | Tap nose with index finger (right then left) | Kinetic |
+| 10 | 20 | Foot-stomping entrainment (right then left) | Postural |
+
+### Dataset Structure
+
+```
+pads_dataset/
+├── movement/
+│   ├── observation_001.json   # Metadata + links to time-series records
+│   ├── ...
+│   ├── observation_469.json
+│   └── timeseries/
+│       ├── 001_CrossArms_LeftWrist.txt
+│       ├── 001_CrossArms_RightWrist.txt
+│       └── ...                # 6-channel CSV files @ 100 Hz, 1024 samples each
+├── questionnaire/
+│   ├── questionnaire_response_001.json  # 30 PDNMS yes/no answers per subject
+│   └── ...
+├── patients/
+│   ├── patient_001.json       # Age, height, weight, gender, diagnosis, handedness
+│   └── ...
+├── scripts/
+│   └── run_preprocessing.py   # Preprocessing pipeline to extract ML-ready data
+└── preprocessed/
+    ├── movement/              # Pre-computed binary files, one per subject
+    ├── questionnaire/
+    └── file_list.csv          # Sample-level overview
+```
+
+Each time-series file stores **1,024 data points (10.24 s)** as comma-separated values with 10-decimal precision. Recordings of 20.48 s are split into two equal halves (suffix `_1` / `_2`) and treated as independent steps.
+
+### Pre-processed Channel Naming
+
+Channels in the pre-processed binary files are named by joining four descriptors with underscores:
+
+```
+<Task>_<Wrist>_<Sensor>_<Axis>
+```
+
+**Tasks:** `Relaxed1`, `Relaxed2`, `RelaxedTask1`, `RelaxedTask2`, `StretchHold`, `HoldWeight`, `DrinkGlas`, `CrossArms`, `TouchNose`, `Entrainment1`, `Entrainment2`  
+**Wrists:** `Left`, `Right`  
+**Sensors:** `Accelerometer`, `Gyroscope`  
+**Axes:** `X`, `Y`, `Z`
+
+Example: `Relaxed1_Left_Accelerometer_X` — first resting task (first half), left wrist, accelerometer, X axis.
+
+### Downloading the Dataset
+
+```sh
+wget -r -N -c -np https://physionet.org/files/parkinsons-disease-smartwatch/1.0.0/
+```
+
+> **Note:** The dataset is licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Total uncompressed size is **1.4 GB**.
+
+### Citation
+
+If you use this dataset, please cite:
+
+```bibtex
+@misc{varghese2024pads,
+  author    = {Varghese, Julian and Brenner, Alexander and Plagwitz, Lucas and
+               van Alen, Catharina and Fujarski, Michael and Warnecke, Tobias},
+  title     = {{PADS} - Parkinson's Disease Smartwatch dataset (version 1.0.0)},
+  year      = {2024},
+  publisher = {PhysioNet},
+  doi       = {10.13026/m0w9-zx22},
+  url       = {https://doi.org/10.13026/m0w9-zx22}
+}
+
+@article{varghese2024ml,
+  author  = {Varghese, Julian and Brenner, Alexander and Fujarski, Michael and
+             van Alen, Catharina M. and Plagwitz, Lucas and Warnecke, Tobias},
+  title   = {Machine Learning in the {Parkinson's} disease smartwatch ({PADS}) dataset},
+  journal = {npj Parkinson's Disease},
+  volume  = {10},
+  pages   = {9},
+  year    = {2024}
+}
+```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
